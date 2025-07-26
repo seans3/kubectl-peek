@@ -41,7 +41,7 @@ To install, you must build the plugin from the source code.
 Clone the repository to your local machine.
 
 ```bash
-git clone <TODO-REPO-URL>
+git clone https://github.com/seans3/kubectl-peek.git
 
 **Download Dependencies**
 This command will find and download all the necessary libraries defined in the `go.mod` file.

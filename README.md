@@ -1,5 +1,3 @@
-Of course. Here is the updated `README.md` with the interactive mode feature added.
-
 # kubectl-peek: A `kubectl` Plugin for Efficiently Viewing Large Resource Lists
 
 `kubectl-peek` is a `kubectl` plugin designed to efficiently "peek" at the first `N` items from a resource list returned by the Kubernetes API server.
@@ -28,10 +26,55 @@ Certain flags from `kubectl get` are not supported because they require the enti
 
 ## 🛠️ Installation
 
-The recommended way to install `kubectl-peek` is via the Krew plugin manager.
+
+To install, you must build the plugin from the source code.
+
+### Prerequisites
+
+* Go (version 1.18 or higher)
+
+* A working `kubectl` and a configured Kubernetes cluster
+
+### Build Steps
+
+**Get the Source Code**
+Clone the repository to your local machine.
 
 ```bash
-kubectl krew install peek
+git clone <TODO-REPO-URL>
+
+**Download Dependencies**
+This command will find and download all the necessary libraries defined in the `go.mod` file.
+
+```bash
+go mod tidy
+```
+
+**Build the Binary**
+The output binary name is critical. For `kubectl` to recognize it as a plugin, it must be named `kubectl-peek`.
+
+```bash
+go build -o kubectl-peek .
+```
+
+**Make the Binary Executable**
+
+```bash
+chmod +x kubectl-peek
+```
+
+**Move the Binary to Your PATH**
+For `kubectl` to discover the plugin, the executable must be in a directory listed in your system's `$PATH`. A common location is `/usr/local/bin`.
+
+```bash
+sudo mv kubectl-peek /usr/local/bin/
+```
+
+**Verify the Installation**
+Check if `kubectl` lists your new plugin. You should see `peek` in the list of available commands.
+
+```bash
+kubectl
 ```
 
 -----
@@ -136,3 +179,5 @@ The difference is **where the filtering happens**.
 
   * **Backward Pagination**: Add support for a "previous page" (`p`) option in interactive mode. This would require caching previous results, as the Kubernetes API only supports forward pagination.
   * **Resource Watching**: Support for `peek --watch`, which would function like `get --watch` but potentially with server-side limits on the initial list returned.
+
+

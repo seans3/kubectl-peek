@@ -9,7 +9,7 @@ You may obtain a copy of the License at
 
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUTHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
@@ -29,7 +29,10 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/cli-runtime/pkg/genericclioptions"
+	"k8s.io/cli-runtime/pkg/printers"
 	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/rest"
 )
 
 const (
@@ -56,6 +59,7 @@ type PeekOptions struct {
 	namespace     string
 	dynamicClient dynamic.Interface
 	mapper        meta.RESTMapper
+	restConfig    *rest.Config
 
 	genericclioptions.IOStreams
 }
@@ -64,7 +68,7 @@ type PeekOptions struct {
 func NewPeekOptions(streams genericclioptions.IOStreams) *PeekOptions {
 	return &PeekOptions{
 		configFlags: genericclioptions.NewConfigFlags(true),
-		printFlags:  genericclioptions.NewPrintFlags(""), // Type setter is not needed for dynamic client.
+		printFlags:  genericclioptions.NewPrintFlags("").WithTypeSetter(scheme.Scheme),
 		IOStreams:   streams,
 	}
 }
@@ -146,11 +150,11 @@ func (o *PeekOptions) Complete() error {
 	}
 
 	// Create a dynamic client that can work with any resource type.
-	config, err := o.configFlags.ToRESTConfig()
+	o.restConfig, err = o.configFlags.ToRESTConfig()
 	if err != nil {
 		return err
 	}
-	o.dynamicClient, err = dynamic.NewForConfig(config)
+	o.dynamicClient, err = dynamic.NewForConfig(o.restConfig)
 	if err != nil {
 		return err
 	}
@@ -185,6 +189,12 @@ func (o *PeekOptions) Run() error {
 		ns = "" // An empty string tells the client to query all namespaces.
 	}
 
+	// We need a REST client that can negotiate for Table output.
+	restClient, err := newRestClient(*o.restConfig, gvr.GroupVersion())
+	if err != nil {
+		return err
+	}
+
 	continueToken := o.continueToken
 	isFirstRequest := true
 
@@ -195,28 +205,31 @@ func (o *PeekOptions) Run() error {
 			LabelSelector: o.selector,
 		}
 
-		list, err := o.dynamicClient.Resource(gvr).Namespace(ns).List(context.Background(), listOptions)
+		table := &metav1.Table{}
+		err := restClient.Get().
+			Namespace(ns).
+			Resource(gvr.Resource).
+			VersionedParams(&listOptions, scheme.ParameterCodec).
+			Do(context.Background()).
+			Into(table)
 		if err != nil {
 			return err
 		}
 
 		// If it's the first page and there are no items, just say so and exit.
-		if isFirstRequest && len(list.Items) == 0 {
+		if isFirstRequest && len(table.Rows) == 0 {
 			fmt.Fprintln(o.Out, "No resources found.")
 			return nil
 		}
 
-		// Use the standard kubectl printers to format the output.
-		printer, err := o.printFlags.ToPrinter()
-		if err != nil {
-			return err
-		}
-		if err := printer.PrintObj(list, o.Out); err != nil {
+		// Directly create a table printer to ensure correct output.
+		printer := printers.NewTablePrinter(printers.PrintOptions{})
+		if err := printer.PrintObj(table, o.Out); err != nil {
 			return err
 		}
 
 		isFirstRequest = false
-		continueToken = list.GetContinue()
+		continueToken = table.Continue
 
 		// If there's no token, we've reached the end of the list.
 		if continueToken == "" {
@@ -244,6 +257,19 @@ func (o *PeekOptions) Run() error {
 			return nil
 		}
 	}
+}
+
+// newRestClient creates a REST client configured to request Table-formatted server-side printing.
+func newRestClient(config rest.Config, gv schema.GroupVersion) (rest.Interface, error) {
+	config.GroupVersion = &gv
+	config.APIPath = "/apis"
+	if gv.Group == "" {
+		config.APIPath = "/api"
+	}
+	config.AcceptContentTypes = "application/json;as=Table;v=v1;g=meta.k8s.io,application/json"
+	config.NegotiatedSerializer = scheme.Codecs.WithoutConversion()
+
+	return rest.RESTClientFor(&config)
 }
 
 // getResourceGVR finds the GroupVersionResource for a given short resource name.

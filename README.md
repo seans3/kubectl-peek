@@ -42,6 +42,7 @@ Clone the repository to your local machine.
 
 ```bash
 git clone https://github.com/seans3/kubectl-peek.git
+```
 
 **Download Dependencies**
 This command will find and download all the necessary libraries defined in the `go.mod` file.
